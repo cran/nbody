@@ -1,4 +1,4 @@
-95c525d991b5dcd45a7c5e984f81bf31 *DESCRIPTION
+0360a7de4bb261fe1cb8a5bb4bf3e186 *DESCRIPTION
 65e5a5232f8ddb062837b1e63e9823d0 *NAMESPACE
 460b451bb1a76c78f6c72634dc6ae91d *R/RcppExports.R
 b1798ed733706a61d0be10e4da495d1f *R/default.code.R
@@ -7,7 +7,7 @@ f2263932d640580302852fbd47b7356d *R/energy.R
 d31435b954ca91699632932557727726 *R/nbody.env.R
 d778066d99c42033115d19ef6b35c567 *R/plot.R
 f2b40f910baa986d1d2f888522f331b4 *R/reset.cm.R
-f2cc1ae314af8bd7ae480661cb1c6105 *R/run.simulation.R
+f5b9b95f47c1245bf6ee228afe94c039 *R/run.simulation.R
 3c6892f143ecd909c6570a169cb1e253 *R/setup.R
 04db7a07e3ff569bf41bd68a8129165c *man/default.code.Rd
 f634c603dc0d80d7a6801c30ba7b247c *man/dot-nbody.env.Rd
@@ -15,8 +15,8 @@ fcb86e6fe0cfd6ab74de7af375f3f983 *man/energy.Rd
 109b7c0195464924e8924c730613561a *man/nbody.Rd
 09fc1348673debcb8a1e766c977f54f6 *man/plot.simulation.Rd
 7841163ec8eeebb22a4ba739b98aa4d3 *man/reset.cm.Rd
-45ed47058c6ed25b3ae07c3fba5dab4b *man/run.simulation.Rd
+54309ccd618d71d7969cc15ea26894ac *man/run.simulation.Rd
 8cd69805eb05463870864e05530b01d4 *man/setup.Rd
 85f017476f00533a942126743841b5d3 *src/RcppExports.cpp
 819571691ab80c4df4f9098a1fdc1b3c *src/accelerations.cpp
-a890da2163c4fe8cbc6b29b8226167ff *src/energypot.cpp
+ed17a9b9442bf2094fd3b2db18f0acca *src/energypot.cpp
