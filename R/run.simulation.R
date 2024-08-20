@@ -11,7 +11,7 @@
 #' \code{ics} is the sublist of initial conditions. It must contain the items:\cr
 #' \code{m} = N-vector with the masses of the N particles. Negative mass values are considered as positive masses belonging to a background field, which is not subject to any forces. Therefore particles with negative mass will have a normal effect on particles with positive masses, but they will not, themselves, be accelerated by any other particle.\cr
 #' \code{x} = N-by-3 matrix specifying the initial position in Cartesian coordinates\cr
-#' \code{v} = N-by-3 matrix specifying the initial velocities\cr\cr
+#' \code{v} = N-by-3 matrix specifying the initial velocities\cr
 #'
 #' \code{para} is an optional sublist of optional simulation parameters. It contains the items:\cr
 #' \code{t.max} = final simulation time in simulation units (see details). If not given, a characteristic time is computed as \code{t.max = 2*pi*sqrt(R^3/GM)}, where \code{R} is the RMS radius and \code{M} is the total mass.\cr
@@ -21,19 +21,21 @@
 #' \code{eta} = accuracy parameter of adaptive time step. Smaller values lead to proportionally smaller adaptive time steps. Typical values range between 0.001 and 0.1. If not given, a default value of 0.01 is assumed. To use fixed time steps, set \code{eta=1e99} and set a time step \code{dt.max}.\cr
 #' \code{integrator} = character string specifying the integrator to be used. Currently implemented integrators are 'euler' (1st order), 'leapfrog' (2nd order), 'yoshida' (4th order), 'yoshida6' (6th order). If not given, 'leapfrog' is the default integrator.\cr
 #' \code{rsmooth} = optional smoothing radius. If not given, no smoothing is assumed.\cr
-#' \code{afield} = a function(x,t) of positions \code{x} (N-by-3 matrix) and time \code{t} (scalar), specifying the external acceleration field. It must return an N-by-3 matrix. If not given, no external field is assumed.\cr
+#' \code{afield} = a function(x,t) of positions \code{x} (N-by-3 matrix) and time \code{t} (scalar), specifying the external acceleration field. It must return an N-by-3 matrix. If not given, no external field is assumed. If the external code "nbodyx" is used, then afield should be a vector of the parameters p1, p2, ... for the external acceleration field of "nbodyx".\cr
 #' \code{G} = gravitational constant in simulation units (see details). If not given, the measured value in SI units is used.\cr
 #' \code{box.size} = scalar>=0. If 0, open boundary conditions are adopted. If >0, the simulation is run in a cubic box of side length box.size with periodic boundary conditions. In this case, the cubic box is contained in the interval [0,box.size) in all three Cartesian coordinates, and all initial positions must be contained in this interval. For periodic boundary conditions, the force between any two particles is always calculated along their shortest separation, which may cross 0-3 boundaries. The exception is GADGET-4, which also evaluates the forces from the periodic repetitions.\cr
-#' \code{include.bg} = logical argument. If FALSE (default), only foreground particles, i.e. particles with masses >=0, are contained in the output vectors \code{x} and \code{v}. If TRUE, all particles are included.
+#' \code{include.bg} = logical argument. If FALSE (default), only foreground particles, i.e. particles with masses >=0, are contained in the output vectors \code{x} and \code{v}. If TRUE, all particles are included.\cr
 #'
 #' \code{code} is an optional sublist to force the use of an external simulation code (see details). It contains the items:\cr
 #' \code{name} = character string specifying the name of the code, currently available options are "R" (default), "nbodyx" (a simple, but fast N-body simulator in Fortran) and "gadget4" (a powerful N-body+SPH simulator, not very adequate for small direct N-body simulations).\cr
 #' \code{file} = character string specifying the path+filename of the external compiled simulation code.\cr
-#' \code{interface} = optional character string specifying a temporary working path used as interface with external codes. If not given, the current working directory is used by default.\cr
+#' \code{interface} = optional character string specifying a temporary working path used as interface with external codes. NOTE: All existing files in this directory are deleted! If not given, the current working directory is used by default.\cr
 #' \code{kind} = optional number of bytes per floating-point number used in nbodyx output files (has no bearing on computation accuracy)\cr
-#' \code{gadget.np} = number of processors used with GADGET-4 (defaults to 1, which is normally best for small direct N-body runs)
+#' \code{gadget.np} = number of processors used with GADGET-4 (defaults to 1, which is normally best for small direct N-body runs)\cr
 #'
 #' @param measure.time logical flag that determines whether time computation time will be measured and displayed.
+#'
+#' @param verbose logical flag indicating whether to show console outputs from external codes. Ignored when using the in-built simulator.
 #'
 #' @details
 #' UNITS: The initial conditions (in the sublist \code{ics}) can be provided in any units. The units of mass, length and velocity then fix the other units.
@@ -90,10 +92,10 @@
 ####################################################################################
 
 # Wrapper to catch errors and measure simulation time
-run.simulation = function(sim, measure.time = TRUE) {
-  return(tryCatch({
+run.simulation = function(sim, measure.time=TRUE, verbose=TRUE) {
+  tryCatch({
     t.start = Sys.time()
-    sim = .run.sim(sim)
+    sim = .run.sim(sim,verbose)
     if (measure.time) {
       t.end = Sys.time()
       time.taken = as.double(t.end)-as.double(t.start)
@@ -103,17 +105,13 @@ run.simulation = function(sim, measure.time = TRUE) {
     message('Warning(s) produced in executing the simulation.')
     sim$output = NA
   }, error = function(e) {
-    message('Error(s) produced in executing the simulation.')
-    message(e)
-    message('\n')
-    sim$output = NA
-  }, finally = {
-    return(sim)
-  }))
+    stop(paste('run.simulation: ',e[[1]]),call.=FALSE)
+  })
+  return(sim)
 }
 
 # Core simulation routine
-.run.sim = function(sim=NULL) {
+.run.sim = function(sim=NULL,verbose) {
 
   # check ICs
   if (is.null(sim)) stop('Mandatory argument "sim" is missing.\n')
@@ -158,40 +156,40 @@ run.simulation = function(sim, measure.time = TRUE) {
   if (is.null(sim$para$rsmooth)) sim$para$rsmooth=0
   if (sim$para$rsmooth<0) stop('smoothing radius cannot be negative.')
   if (sim$para$t.max/sim$para$dt.out>1e7) stop('dt.out is too small for the simulation time t.max.\n')
-  if (!is.null(sim$para$afield)) {
-    a = try(sim$para$afield(sim$ics$x,0),silent=TRUE)
-    if (length(dim(a))!=2) stop('afield is not a correctly vectorized function of (x,t).\n')
-    if (any(dim(a)!=dim(sim$ics$x))) stop('afield is not a correctly vectorized function of (x,t).\n')
-  }
   if (is.null(sim$para$include.bg)) sim$para$include.bg = FALSE
 
   # handle external code
   if (is.null(sim$code)) {
     if (is.null(.nbody.env$code)) {
-      sim$code = list()
+      sim$code = list(name='R')
     } else {
       sim$code = .nbody.env$code
     }
+  } else {
+    if (is.null(sim$code$name)) stop('A code$name must be specified, if the argument code is given.')
   }
-  if (is.null(sim$code$name)) sim$code$name = 'R'
   if (sim$code$name!='R') {
-    if (!is.null(sim$para$afield)) stop('afield can only be specified with code "R"')
     if (is.null(sim$code$file)) stop('code$file must be specified for external simulation codes')
     if (!file.exists(sim$code$file)) stop(sprintf('simulation code does not exist: %s',sim$code$file))
     if (file.access(sim$code$file,1)!=0) stop(sprintf('you have no permission to execute the code: %s',sim$code$file))
-    if (is.null(sim$code$interface)) {
-      if (file.access(getwd(),4)!=0) stop('you do not have permission to read in the current directory; please specify code$interface.')
-      if (file.access(getwd(),2)!=0) stop('you do not have permission to write in the current directory; please specify code$interface.')
-      sim$code$interface=file.path(getwd(),'tmp_nbody_interface')
-    } else {
-      if (file.access(sim$code$interface,4)!=0) stop(sprintf('you do not have permission to read in: %s',sim$code$interface))
-      if (file.access(sim$code$interface,2)!=0) stop(sprintf('you do not have permission to write in: %s',sim$code$interface))
-    }
-    system(sprintf('rm -r %s',sim$code$interface))
-    system(sprintf('mkdir -p %s',sim$code$interface))
-    if (file.access(sim$code$interface,6)!=0) stop(sprintf('unable to create directory: %s',sim$code$interface))
+    if (is.null(sim$code$interface)) sim$code$interface=tempdir()
+    if (file.access(sim$code$interface,4)!=0) stop(sprintf('you do not have permission to read in: %s',sim$code$interface))
+    if (file.access(sim$code$interface,2)!=0) stop(sprintf('you do not have permission to write in: %s',sim$code$interface))
+    unlink(paste0(sim$code$interface,'/*'),recursive=TRUE) # remove all files from interface directory
   }
 
+  # handle external acceleration field
+  if (!is.null(sim$para$afield)) {
+    if (sim$code$name=='R') {
+      a = try(sim$para$afield(sim$ics$x,0),silent=TRUE)
+      if (length(dim(a))!=2) stop('afield is not a correctly vectorized function of (x,t).\n')
+      if (any(dim(a)!=dim(sim$ics$x))) stop('afield is not a correctly vectorized function of (x,t).\n')
+    } else if (sim$code$name=='nbodyx') {
+      if (!is.numeric(sim$para$afield)) stop('When using nbodyx with an external field, then afield should be the vector of parameters. Set afield=0, if no parameters used.')
+    } else {
+      stop('afield can only be specified for codes "R" and "nbodyx"')
+    }
+  }
 
   # nbodyx (Fortran code by D. Obreschkow) ************************************************************************************
 
@@ -227,10 +225,20 @@ run.simulation = function(sim, measure.time = TRUE) {
     para[13] = sprintf('eta %.15e',sim$para$eta)
     para[14] = sprintf('box_size %.15e',sim$para$box.size)
     para[15] = sprintf('integrator %s',sim$para$integrator)
+    if (is.null(sim$para$afield)) {
+      para[16] = sprintf('acceleration n')
+    } else {
+      para[16] = sprintf('acceleration y')
+      for (i in seq_along(sim$para$afield)) {
+        para[16+i] = sprintf('p%d %.15e',i,sim$para$afield[i])
+      }
+    }
+
     write.table(para, file=filename.para, col.names = FALSE, row.names = FALSE, quote = FALSE)
 
     # run simulation
-    system(sprintf('%s -parameterfile %s',sim$code$file, filename.para),intern=F)
+    error.code = system(sprintf('%s -parameterfile %s',sim$code$file, filename.para),intern=FALSE,ignore.stderr=TRUE,ignore.stdout=!verbose)
+    if (error.code>0) stop('Could not execute the nbodyx code. Try recompiling nbodyx.')
 
     # read stats file
     if (!file.exists(filename.stats)) stop(paste0('file does not exist: ',filename.stats))
@@ -310,9 +318,9 @@ run.simulation = function(sim, measure.time = TRUE) {
     i=i+1; para[i] = sprintf('MaxSizeTimestep                                   %.12e',min(sim$para$dt.out,sim$para$dt.max))
     i=i+1; para[i] = sprintf('MinSizeTimestep                                   %.12e',0)
     i=i+1; para[i] = sprintf('TypeOfOpeningCriterion                            1')
-    i=i+1; para[i] = sprintf('ErrTolTheta                                       0') # only used for tree scheeme
-    i=i+1; para[i] = sprintf('ErrTolThetaMax                                    0') # only used for tree scheeme
-    i=i+1; para[i] = sprintf('ErrTolForceAcc                                    0') # only used for tree scheeme
+    i=i+1; para[i] = sprintf('ErrTolTheta                                       0') # only used for tree scheme
+    i=i+1; para[i] = sprintf('ErrTolThetaMax                                    0') # only used for tree scheme
+    i=i+1; para[i] = sprintf('ErrTolForceAcc                                    0') # only used for tree scheme
     i=i+1; para[i] = sprintf('TopNodeFactor                                     2.5')
     i=i+1; para[i] = sprintf('ActivePartFracForNewDomainDecomp                  0.01')
     i=i+1; para[i] = sprintf('DesNumNgb                                         64')
@@ -336,9 +344,11 @@ run.simulation = function(sim, measure.time = TRUE) {
     if (is.null(sim$code$gadget.np)) sim$code$gadget.np = 1
     if (sim$code$gadget.np<1) stop('gadget.np must be a positive integer.')
     cmd = sprintf('mpirun -np %d %s %s', sim$code$gadget.np, sim$code$file, filename.para)
-    system(cmd,intern=F)
+    error.code = system(cmd,intern=FALSE,ignore.stderr=TRUE,ignore.stdout=!verbose)
+    if (error.code>0) stop('Could not execute the gadget code. Try recompiling gadget.')
 
     # load data
+    n = length(sim$ics$m)
     n.snapshots = 0
     while(file.exists(sprintf('%s/snapshot_%03d',directory.output,n.snapshots))) n.snapshots=n.snapshots+1
     if (n.snapshots<2) stop('not enough GADGET-4 snapshots found')
@@ -475,7 +485,7 @@ run.simulation = function(sim, measure.time = TRUE) {
       dt = min(sim$para$dt.max, sim$para$t.max-global$t, t.next-global$t, max(sim$para$dt.min, sim$para$eta*global$dt.var))
       iteration(dt)
       global$t = global$t+dt
-      if (sim$para$box.size>0) x = x%%sim$para$box.size
+      if (sim$para$box.size>0) global$x = global$x%%sim$para$box.size
       n.iterations = n.iterations+1
       if (global$t>=t.next | global$t>=sim$para$t.max) {
         .save.snapshot()
